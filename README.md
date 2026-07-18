@@ -39,6 +39,14 @@ flowchart LR
 
 The access check happens before data enters the LLM context. This keeps information controls deterministic and auditable instead of relying on prompt instructions alone.
 
+### Phase 1 reference diagram
+
+<p align="center">
+  <img src="docs/assets/system-architecture.png" alt="System architecture showing the user interface, FastAPI backend, role guard, query classifier, academic-data retrieval, Groq composition, response formatter, and output formats." width="900" />
+</p>
+
+<p align="center"><em>Figure 1. Phase 1 system architecture for the Moodle AI Assistant pilot.</em></p>
+
 ## Key capabilities
 
 | Capability | What it does |
@@ -120,3 +128,13 @@ Guided by Dr. Sudhir Shenai.
 ## Project status
 
 Phase 1 is complete as a documented proof of concept. The next repository milestone is to add the implementation source, environment configuration, tests, and deployment instructions alongside this documentation.
+
+## References and attribution
+
+1. P. Parker Vijay Harshan, P. Pandit, P. Charan Prashanth, and A. Rawat, *Agentic AI to Augment the Organization Specific Knowledge for Real Time Response of LLM*, project research paper, Nitte Meenakshi Institute of Technology, 2026. [PDF](docs/academic/research-paper.pdf)
+2. P. Parker Vijay Harshan, P. Pandit, P. Charan Prashanth, and A. Rawat, *Agentic AI to Augment Organization Specific Knowledge for Real Time Response of LLM*, Phase 1 project synopsis, Nitte Meenakshi Institute of Technology, Academic Year 2025-26. [PDF](docs/academic/phase-1-synopsis.pdf)
+3. P. Lewis et al., [*Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks*](https://arxiv.org/abs/2005.11401), NeurIPS, 2020.
+4. S. Yao et al., [*ReAct: Synergizing Reasoning and Acting in Language Models*](https://openreview.net/forum?id=WE_vluYUL-X), ICLR, 2023.
+5. Y. Gao et al., [*Retrieval-Augmented Generation for Large Language Models: A Survey*](https://arxiv.org/abs/2312.10997), 2023.
+
+Copyright (c) 2026 P. Parker Vijay Harshan, Palak Pandit, P. Charan Prashanth, and Abhay Rawat. All rights reserved. The Phase 1 architecture diagram is an original project asset reproduced from Figure 6.1 of the [project synopsis](docs/academic/phase-1-synopsis.pdf). Third-party product names and marks, including FastAPI, Groq, Llama, and Microsoft Excel, belong to their respective owners and are used only to identify technologies or output formats. Their appearance does not imply affiliation with, endorsement of, or sponsorship of this project. See [NOTICE.md](NOTICE.md) for the full ownership and reuse notice.
