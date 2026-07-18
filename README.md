@@ -1,6 +1,6 @@
 <div align="center">
 
-# OrganicMind
+# EKnowAgent
 
 ### Enterprise Knowledge Agent for real-time, access-aware answers
 
