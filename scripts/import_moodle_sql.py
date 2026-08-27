@@ -97,7 +97,9 @@ def main(source_path: Path, output_path: Path):
           cgpa_source TEXT, attendance_source TEXT, mentor_source TEXT)""")
         # Course contexts (50) connect teacher role assignments to Moodle courses.
         course_contexts = {int(row[0]): int(row[2]) for row in tables["mdl_context"] if len(row) > 2 and row[0] and row[1] == "50" and row[2]}
-        teacher_role_ids = {int(row[0]) for row in tables["mdl_role"] if len(row) > 5 and row[0] and str(row[2]).lower() in {"editingteacher", "teacher"}}
+        roles = {int(row[0]): row for row in tables["mdl_role"] if row and row[0]}
+        teacher_role_ids = {role_id for role_id, row in roles.items() if len(row) > 5 and str(row[2]).lower() in {"editingteacher", "teacher"}}
+        admin_role_ids = {role_id for role_id, row in roles.items() if len(row) > 5 and (str(row[2]).lower() == "manager" or str(row[5]).lower() == "manager")}
         users_by_id = {int(row[0]): row for row in tables["mdl_user"] if row and row[0]}
         teachers_by_course = defaultdict(list)
         staff_ids = set()
@@ -108,6 +110,17 @@ def main(source_path: Path, output_path: Path):
                 if course_id:
                     teachers_by_course[course_id].append(int(row[3]))
         staff = [users_by_id[user_id] for user_id in sorted(staff_ids) if user_id in users_by_id]
+        faculty_rows, admin_rows = {}, {}
+        for row in tables["mdl_role_assignments"]:
+            if len(row) <= 3 or not row[1] or not row[3] or int(row[3]) not in users_by_id:
+                continue
+            role_id, person_id = int(row[1]), int(row[3])
+            person, role_info = users_by_id[person_id], roles.get(role_id, [])
+            entry = (person_id, f"{person[10] or ''} {person[11] or ''}".strip(), person[12] or "", person[14] or "", person[17] or "", (role_info[2] if len(role_info) > 2 else ""))
+            if role_id in teacher_role_ids:
+                faculty_rows[person_id] = entry
+            if role_id in admin_role_ids:
+                admin_rows[person_id] = entry
         rows_by_student = {}
         for user in tables["mdl_user"]:
             if len(user) < 18 or user[4] == "1" or user[5] == "1": continue
@@ -143,7 +156,19 @@ def main(source_path: Path, output_path: Path):
         rows = list(rows_by_student.values())
         conn.executemany("INSERT INTO student_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
         conn.execute("CREATE UNIQUE INDEX idx_student_records_id ON student_records(student_id)")
-    print({"output": str(output_path), "students": len(rows), "courses": len(courses), "attendance_logs": len(tables['mdl_attendance_log']), "staff": len(staff)})
+        conn.execute("""CREATE TABLE faculty_directory (
+          faculty_id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT, department TEXT, role TEXT, assigned_students INTEGER)""")
+        conn.execute("""CREATE TABLE admin_directory (
+          admin_id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT, department TEXT, role TEXT)""")
+        assigned_counts = defaultdict(int)
+        for student in rows:
+            mentor_email = student[10]
+            for faculty_id, faculty in faculty_rows.items():
+                if faculty[2] and faculty[2] == mentor_email:
+                    assigned_counts[faculty_id] += 1
+        conn.executemany("INSERT INTO faculty_directory VALUES (?, ?, ?, ?, ?, ?, ?)", [(*entry, assigned_counts[faculty_id]) for faculty_id, entry in faculty_rows.items()])
+        conn.executemany("INSERT INTO admin_directory VALUES (?, ?, ?, ?, ?, ?)", admin_rows.values())
+    print({"output": str(output_path), "students": len(rows), "courses": len(courses), "attendance_logs": len(tables['mdl_attendance_log']), "staff": len(staff), "faculty": len(faculty_rows), "admins": len(admin_rows)})
 
 
 if __name__ == "__main__":
