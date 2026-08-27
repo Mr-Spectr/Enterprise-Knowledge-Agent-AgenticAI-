@@ -21,6 +21,7 @@ from typing import Any, Awaitable, Callable, Dict, List
 
 from data_agents import route_data_agent
 from data_retriever import get_user_context
+from agent_reasoner import think as llm_think
 from intent_agent import run_intent_agent
 from mcp_csv_server import call_tool
 from query_planner import plan_query
@@ -240,7 +241,13 @@ async def run_agentic_workflow(
 ) -> AgentResult:
     trace: List[Dict[str, str]] = []
 
+    async def reason(agent: str, objective: str, facts: Dict[str, Any]) -> None:
+        """Record each agent's constrained LLM deliberation before its action."""
+        detail = await llm_think(agent, objective, facts, ask_groq)
+        trace.append(_step(agent, "llm_reasoning", "completed", detail))
+
     # ── Role Guard Agent ──────────────────────────────────────────────────
+    await reason("role-guard-agent", "prepare to resolve caller identity", {"user_id": user_id})
     try:
         role = detect_role(user_id)
     except Exception:
@@ -251,6 +258,7 @@ async def run_agentic_workflow(
     ))
 
     # ── Context Agent ─────────────────────────────────────────────────────
+    await reason("context-agent", "identify the minimum role-scoped context needed", {"role": role, "user_id": user_id})
     user_context = get_user_context(
         user_id=user_id,
         role=role,
@@ -262,6 +270,7 @@ async def run_agentic_workflow(
     ))
 
     # ── AI Query Planner Agent ────────────────────────────────────────────
+    await reason("query-planner-agent", "choose a safe information route", {"role": role, "query": query})
     plan = await plan_query(query, role, ask_groq)
     route = plan["route"]
     trace.append(_step(
@@ -270,6 +279,7 @@ async def run_agentic_workflow(
     ))
 
     # ── Intent Agent: internal capability resolution, not user-facing routing ─
+    await reason("intent-agent", "map the request to an approved academic capability", {"query": query, "user_id": user_id})
     classification, intent_detail = await run_intent_agent(query, classify_query, user_id=user_id)
     trace.append(_step(
         "intent-agent", "classify_and_enrich_intent", "completed", intent_detail,
@@ -279,6 +289,7 @@ async def run_agentic_workflow(
     intent = classification.get("intent", "general")
     entity = classification.get("entity", "general")
 
+    await reason("supervisor-agent", "review the bounded specialist-agent plan", {"route": route, "intent": intent, "role": role})
     supervisor_plan = create_plan(route, intent, role)
     trace.append(_step(
         "supervisor-agent", "create_bounded_execution_plan", "completed",
@@ -287,6 +298,7 @@ async def run_agentic_workflow(
 
     # ── General query → Knowledge Agent (direct LLM) ──────────────────────
     if route == "general":
+        await reason("knowledge-agent", "prepare a safe and useful general response", {"query": query, "role": role})
         trace.append(_step(
             "knowledge-agent", "answer_general_query", "in_progress",
             "Sending conceptual query to Groq LLM.",
@@ -298,6 +310,7 @@ async def run_agentic_workflow(
         )
         trace[-1]["status"] = "completed"
         trace[-1]["detail"] = "Returned direct LLM answer for general knowledge query."
+        await reason("response-verifier-agent", "check whether the generated response is non-empty and appropriate", {"answer_present": bool(answer)})
         verification = verify_general_response(answer)
         trace.append(_step("response-verifier-agent", "verify_general_response", "completed" if verification.accepted else "failed", verification.reason))
         if not verification.accepted:
@@ -309,12 +322,15 @@ async def run_agentic_workflow(
 
     # ── Knowledge query → MCP RAG retrieval + evidence-grounded composer ──
     if route == "knowledge":
+        await reason("knowledge-retrieval-agent", "retrieve only approved knowledge-base passages", {"query": query, "role": role})
         evidence = call_tool("search_project_knowledge", {"query": query, "limit": 5}, requester_user_id=user_id)
+        await reason("evidence-verifier-agent", "verify that retrieved passages contain approved evidence", {"result_count": evidence.get("result_count", 0)})
         verification = verify_knowledge_evidence(evidence)
         trace.append(_step("knowledge-retrieval-agent", "retrieve_approved_passages", "completed" if verification.accepted else "failed", verification.reason))
         if not verification.accepted:
             trace.append(_step("recovery-agent", "return_transparent_limitation", "completed", "No approved RAG evidence was available."))
             return AgentResult(answer="I could not find an approved knowledge source for that request.", role=role, classification=classification, user_context=user_context, trace=trace)
+        await reason("composer-agent", "compose an answer grounded only in verified passages", {"query": query, "evidence_count": evidence.get("result_count", 0)})
         answer = await ask_groq(
             "Answer only from the supplied approved knowledge passages. State when the passages do not answer the question.",
             f"Question: {query}\nEvidence: {_json_dumps(evidence)}",
@@ -324,12 +340,14 @@ async def run_agentic_workflow(
         return AgentResult(answer=answer, role=role, classification=classification, user_context=user_context, trace=trace)
 
     # ── Data Router Agent ─────────────────────────────────────────────────
+    await reason("data-router-agent", "select the approved specialist retrieval agent", {"intent": intent, "entity": entity, "role": role})
     trace.append(_step(
         "data-router-agent", "select_retrieval_agent", "completed",
         f"Selected retrieval path for intent={intent}, entity={entity}.",
     ))
 
     # ── Intent-Specific Data Agent ────────────────────────────────────────
+    await reason("data-agent", "retrieve only the minimum approved academic data", {"intent": intent, "entity": entity, "role": role})
     data_result = route_data_agent(
         intent=intent,
         entity=entity,
@@ -345,6 +363,7 @@ async def run_agentic_workflow(
         data_result.detail,
     ))
 
+    await reason("evidence-verifier-agent", "validate record scope and structured evidence", {"record_count": len(retrieved.get("records", [])), "role": role})
     verification = verify_academic_evidence(retrieved, user_id, role)
     trace.append(_step("evidence-verifier-agent", "verify_academic_evidence", "completed" if verification.accepted else "failed", verification.reason))
     if not verification.accepted:
@@ -360,6 +379,7 @@ async def run_agentic_workflow(
         "mentor_lookup", "class_teacher_info", "backlog_report",
         "contact_lookup",
     }:
+        await reason("executor-agent", "prepare a deterministic source-grounded answer", {"intent": intent, "record_count": len(retrieved.get("records", []))})
         trace.append(_step(
             "executor-agent", "compose_structured_answer", "completed",
             "Generated direct tool-based response (no LLM call).",
@@ -368,6 +388,7 @@ async def run_agentic_workflow(
 
     # ── Composer Agent (complex/unknown → LLM fallback) ───────────────────
     else:
+        await reason("composer-agent", "compose from verified structured data without adding facts", {"intent": intent, "record_count": len(retrieved.get("records", []))})
         trace.append(_step(
             "composer-agent", "compose_natural_language_response", "in_progress",
             "Sending database results to Groq LLM for natural language composition.",
