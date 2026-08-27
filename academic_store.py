@@ -73,3 +73,8 @@ def database_status() -> dict[str, object]:
         "records": count,
         "source": "external_sqlite" if EXTERNAL_SQLITE else "bundled_demo_csv",
     }
+
+
+def source_label() -> str:
+    """Human-readable source name for answers and export metadata."""
+    return "Moodle SQL import" if EXTERNAL_SQLITE else "Bundled demonstration data"

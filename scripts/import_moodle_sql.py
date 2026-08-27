@@ -104,7 +104,9 @@ def main(source_path: Path, output_path: Path):
             average = sum(grades[uid]) / len(grades[uid]) if grades[uid] else 0
             total, present = attendance[uid]
             attendance_percent = round(present * 100 / total, 2) if total else 0
-            rows.append((identifier, f"{user[10] or ''} {user[11] or ''}".strip(), "", user[17] or "", course_names or user[17] or "", round(average / 10, 2), attendance_percent, "0", "", "", "", "", user[14] or "", user[12] or "", "", "", ""))
+            # Moodle does not expose an authoritative "backlog" field in this
+            # dump. Leave it blank rather than inventing a value.
+            rows.append((identifier, f"{user[10] or ''} {user[11] or ''}".strip(), "", user[17] or "", course_names or "", round(average / 10, 2) if grades[uid] else "", attendance_percent if total else "", "", "", "", "", "", user[14] or "", user[12] or "", "", "", ""))
         conn.executemany("INSERT INTO student_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
         conn.execute("CREATE INDEX idx_student_records_id ON student_records(student_id)")
     print({"output": str(output_path), "students": len(rows), "courses": len(courses), "attendance_logs": len(tables['mdl_attendance_log'])})

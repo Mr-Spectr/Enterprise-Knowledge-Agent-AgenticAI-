@@ -1,8 +1,8 @@
 """
 data_retriever.py
 
-CSV-only data retrieval layer.
-All student data comes from /Users/palakpandit/Desktop/students_500.csv.
+SQLite-backed data retrieval layer.
+Records come from the configured Moodle import or the bundled demo source.
 """
 
 from __future__ import annotations
@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, Dict
+
+from academic_store import source_label
 
 from csv_db import (
     all_backlogs,
@@ -29,7 +31,11 @@ from csv_db import (
 
 
 def _clean(obj: Any) -> Any:
-    return obj
+    if isinstance(obj, dict):
+        return {key: _clean(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_clean(value) for value in obj]
+    return source_label() if obj == "students_500.csv" else obj
 
 
 def get_user_context(
@@ -153,7 +159,7 @@ def _faculty_backlogs(user_id: str) -> Dict[str, Any]:
             "backlog_courses": s["backlog_courses"],
         }
         for s in students_for_faculty(user_id)
-        if s["backlog_count"] > 0
+        if (s["backlog_count"] or 0) > 0
     ]
     return {
         "count_with_backlogs": len(students),

@@ -21,6 +21,7 @@ from pathlib import Path
 # ── openpyxl (Excel) ──────────────────────────────────────────────────────────
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.worksheet.table import Table as ExcelTable, TableStyleInfo
 from openpyxl.utils import get_column_letter
 
 # ── python-docx (Word) ────────────────────────────────────────────────────────
@@ -417,30 +418,59 @@ def create_excel(answer: str, records: list[dict] | None = None) -> Path:
     # into prose. The summary remains on the first, presentation-ready sheet.
     if records:
         data_ws = wb.create_sheet("Data")
-        preferred = ["usn", "student_id", "name", "semester", "department", "course", "cgpa", "attendance_percent", "backlog_count", "email", "phone"]
-        fields = [key for key in preferred if any(key in record for record in records)]
-        fields += sorted({key for record in records for key in record} - set(fields))
-        for col, key in enumerate(fields, 1):
-            cell = data_ws.cell(row=1, column=col, value=key.replace("_", " ").title())
+        data_ws.sheet_view.showGridLines = False
+        columns = [
+            ("student_id", "Student ID", "text"), ("name", "Student Name", "text"),
+            ("department", "Department", "text"), ("semester", "Semester", "integer"),
+            ("course", "Enrolled Courses", "text"), ("cgpa", "Academic Score / 10", "decimal"),
+            ("attendance_percent", "Attendance", "percent"), ("backlog_count", "Backlog Status", "text"),
+            ("email", "College Email", "text"), ("phone", "Phone", "text"),
+            ("source", "Data Source", "text"), ("data_quality_note", "Data Quality Note", "text"),
+        ]
+        data_ws.merge_cells("A1:L1")
+        data_ws["A1"] = "Academic Records - Source-Aware Export"
+        data_ws["A1"].font = Font(name="Calibri", bold=True, size=16, color=TITLE_FG)
+        data_ws["A1"].fill = PatternFill("solid", fgColor="EEF1FB")
+        data_ws["A1"].alignment = Alignment(vertical="center", indent=1)
+        data_ws.row_dimensions[1].height = 30
+        data_ws.merge_cells("A2:L2")
+        data_ws["A2"] = "Blank fields mean the value was not present in the Moodle source. Values are not estimated or invented."
+        data_ws["A2"].font = Font(name="Calibri", size=10, color=META_FG, italic=True)
+        data_ws["A2"].alignment = Alignment(wrap_text=True, vertical="center", indent=1)
+        data_ws.row_dimensions[2].height = 28
+        header_row = 4
+        for col, (_, label, _) in enumerate(columns, 1):
+            cell = data_ws.cell(row=header_row, column=col, value=label)
             cell.font = Font(name="Calibri", bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor=HDR_BG)
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border = thin_border()
-        for row_index, record in enumerate(records, 2):
+        data_ws.row_dimensions[header_row].height = 30
+        for row_index, record in enumerate(records, header_row + 1):
             fill = ALT_BG if row_index % 2 == 0 else "FFFFFF"
-            for col, key in enumerate(fields, 1):
+            for col, (key, _, kind) in enumerate(columns, 1):
                 value = record.get(key, "")
-                if isinstance(value, (dict, list)):
-                    value = str(value)
+                if value in (None, "", [], {}):
+                    value = "Not available"
+                elif key == "backlog_count":
+                    value = "Not available" if value is None else f"{value} recorded"
                 cell = data_ws.cell(row=row_index, column=col, value=value)
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
+                cell.alignment = Alignment(vertical="top", wrap_text=True, horizontal="right" if kind in {"integer", "decimal", "percent"} else "left")
                 cell.fill = PatternFill("solid", fgColor=fill)
                 cell.border = thin_border()
-        data_ws.auto_filter.ref = data_ws.dimensions
-        data_ws.freeze_panes = "A2"
-        for col in range(1, len(fields) + 1):
-            width = max(len(str(data_ws.cell(row=r, column=col).value or "")) for r in range(1, data_ws.max_row + 1))
-            data_ws.column_dimensions[get_column_letter(col)].width = min(max(width + 2, 12), 42)
+                if kind == "decimal" and isinstance(value, (int, float)):
+                    cell.number_format = "0.00"
+                elif kind == "percent" and isinstance(value, (int, float)):
+                    cell.value = value / 100
+                    cell.number_format = "0.0%"
+        end_row = header_row + len(records)
+        table = ExcelTable(displayName="AcademicRecords", ref=f"A{header_row}:L{end_row}")
+        table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+        data_ws.add_table(table)
+        data_ws.freeze_panes = "A5"
+        widths = [18, 26, 20, 11, 44, 19, 14, 18, 30, 16, 20, 60]
+        for col, width in enumerate(widths, 1):
+            data_ws.column_dimensions[get_column_letter(col)].width = width
 
     # ── Footer ────────────────────────────────────────────────────────────────
     row += 2

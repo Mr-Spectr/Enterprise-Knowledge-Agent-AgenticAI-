@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from academic_store import DB_PATH, ensure_database, fetch_records
+from academic_store import DB_PATH, EXTERNAL_SQLITE, ensure_database, fetch_records
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -226,7 +226,7 @@ def faculty_profile(user_id: str) -> Optional[Dict[str, Any]]:
         round(sum(s["cgpa"] for s in students) / len(students), 2)
         if students else 0
     )
-    backlog_students = sum(1 for s in students if s["backlog_count"] > 0)
+    backlog_students = sum(1 for s in students if (s["backlog_count"] or 0) > 0)
     profile = {
         **faculty,
         "courses": [course["fullname"] for course in courses[:8]],
@@ -257,7 +257,9 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
     cgpa = _to_float(row.get("cgpa"))
     backlog_count = _to_int(row.get("backlog_count"), -1)
     if backlog_count < 0:
-        backlog_count, backlog_courses = _derive_backlogs(cgpa)
+        backlog_count, backlog_courses = (
+            (None, []) if EXTERNAL_SQLITE else _derive_backlogs(cgpa)
+        )
     else:
         backlog_courses = [item.strip() for item in str(row.get("backlog_subjects") or "").split(",") if item.strip() and item.strip() != "0"]
     mentor = {
@@ -265,8 +267,10 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "email": str(row.get("mentor_email") or "").strip(),
         "phone": str(row.get("mentor_phone") or "").strip(),
     }
-    if not mentor["name"]:
+    if not mentor["name"] and not EXTERNAL_SQLITE:
         mentor = _mentor_for(student_id, semester)
+    if not mentor["name"]:
+        mentor = {"name": "Not available in Moodle", "email": "", "phone": ""}
     department = str(row.get("department") or "ISE").strip()
     imported_courses = [item.strip() for item in str(row.get("course") or "").split(";") if item.strip()]
     courses = (
@@ -281,10 +285,10 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
             for index, course_name in enumerate(imported_courses)
         ]
         if imported_courses
-        else _courses_for(department, semester)
+        else (_courses_for(department, semester) if not EXTERNAL_SQLITE else [])
     )
     attendance_percent = _to_float(row.get("attendance_percent"), -1)
-    if attendance_percent < 0:
+    if attendance_percent < 0 and not EXTERNAL_SQLITE:
         attendance_percent = _derive_attendance(student_id, cgpa, semester)
     total_sessions = 80
     present = round(total_sessions * attendance_percent / 100)
@@ -306,17 +310,21 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "courses": courses,
         "enrolled_courses": courses,
         "course_count": len(courses),
-        "attendance_percent": attendance_percent,
+        "attendance_percent": attendance_percent if attendance_percent >= 0 else None,
         "total_sessions": total_sessions,
-        "present": present,
-        "absent": absent,
+        "present": present if attendance_percent >= 0 else None,
+        "absent": absent if attendance_percent >= 0 else None,
         "late": 0,
         "excused": 0,
         "backlog_count": backlog_count,
         "backlog_courses": backlog_courses,
         "mentor": dict(mentor),
         "class_teacher": dict(mentor),
-        "source": str(DB_PATH.name),
+        "source": "Moodle SQL import" if EXTERNAL_SQLITE else "Bundled demonstration data",
+        "data_quality_note": (
+            "Attendance is calculated from Moodle attendance logs; academic score is a Moodle grade average on a 10-point scale, not an official CGPA."
+            if EXTERNAL_SQLITE else "Demonstration dataset."
+        ),
     }
 
 
@@ -571,7 +579,7 @@ def all_backlogs(limit: int = 30) -> Dict[str, Any]:
             "backlog_courses": s["backlog_courses"],
         }
         for s in load_students()
-        if s["backlog_count"] > 0
+        if (s["backlog_count"] or 0) > 0
     ]
     return {
         "count_with_backlogs": len(students),
