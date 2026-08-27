@@ -179,10 +179,16 @@ def _chat_with_history(
     new_user_message: str,
     model: str,
 ) -> str:
-    if os.getenv("ANTHROPIC_API_KEY"):
+    # Reasoning traces use a compact Groq model even when a long-form provider
+    # is configured, keeping the multi-agent loop responsive.
+    if os.getenv("ANTHROPIC_API_KEY") and model != "agent-reasoner":
         return _anthropic_chat(system_prompt, history, new_user_message)
     client = _get_client()
-    model = os.getenv("GROQ_MODEL", model)
+    model = (
+        os.getenv("GROQ_AGENT_MODEL", "groq/compound-mini")
+        if model == "agent-reasoner"
+        else os.getenv("GROQ_MODEL", model)
+    )
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": new_user_message})
@@ -190,6 +196,7 @@ def _chat_with_history(
     completion = client.chat.completions.create(
         model=model,
         temperature=0.3,
+        max_completion_tokens=120 if model == os.getenv("GROQ_AGENT_MODEL", "groq/compound-mini") else 900,
         messages=messages,
     )
     return (completion.choices[0].message.content or "").strip()
