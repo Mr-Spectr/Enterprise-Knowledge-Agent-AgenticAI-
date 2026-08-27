@@ -94,6 +94,38 @@ The production proof of concept described in the research paper exposes the foll
 | `POST` | `/ask` | Submit a natural-language request |
 | `POST` | `/mentor/assign` | Perform an administrator-only mentor assignment |
 
+## Running the consolidated implementation
+
+The repository now includes the FastAPI implementation, demo CSV data, a
+role-filtered RAG knowledge base, MCP-style tools, and automated checks.
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn main:app --reload
+```
+
+The service defaults to the included non-production `data/students.csv`. Set
+`GROQ_API_KEY` as an environment secret to enable general LLM answers; the
+structured-data and document RAG paths work without it. Public documents in
+`knowledge/` are indexed at startup. To index an approved PDF, DOCX, TXT, or
+Markdown document, run:
+
+```bash
+python scripts/ingest_knowledge.py path/to/document.pdf --access-level faculty
+```
+
+`POST /knowledge/search` returns source-attributed excerpts visible to the
+server-resolved user role. The MCP-style `search_project_knowledge` tool uses
+the same identity-bound authorization model. Do not deploy real student data or
+institutional documents without approved access controls and retention policy.
+
+For Render deployment, create a Docker Web Service from `render.yaml`, set
+`GROQ_API_KEY` as a secret if required, then verify `GET /health` and a valid
+`POST /knowledge/search` query before sharing the URL.
+
 ## Documentation
 
 Project documents are intentionally kept out of the repository root so they remain easy to find and extend.
@@ -109,10 +141,11 @@ Project documents are intentionally kept out of the repository root so they rema
 - [x] Define the agent workflow and reference architecture
 - [x] Demonstrate hybrid routing, structured retrieval, and role-aware responses
 - [x] Evaluate request classification, latency, and access control
-- [ ] Add semantic retrieval for unstructured institutional content
+- [x] Add local, role-filtered document retrieval with source attribution
+- [ ] Upgrade local retrieval to semantic embeddings and hybrid reranking
 - [ ] Introduce session-scoped multi-turn context
 - [ ] Move from prototype storage to a production-grade database
-- [ ] Publish the consolidated implementation and deployment guide
+- [x] Publish the consolidated implementation and deployment guide
 
 ## Team
 

@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+data/knowledge.db
+*.pyc
+.DS_Store
+.env
+*.log
+finalyear/
+.env 
+data/mentor_assignments.json 
+*.sql 
+peek_report.txt 

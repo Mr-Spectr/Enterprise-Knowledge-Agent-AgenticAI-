@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: enterprise-knowledge-agent
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
