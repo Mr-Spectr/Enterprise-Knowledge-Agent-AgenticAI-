@@ -358,7 +358,10 @@ def is_definition_query(query: str) -> bool:
         return False
     if find_student(query):
         return False
-    return bool(tokens & DEFINITION_TERMS)
+    # A conceptual question should take the LLM path even when it does not
+    # mention one of the academic-data keywords. Personal questions (for
+    # example, "Explain my attendance") are already excluded above.
+    return True
 
 
 def intent_from_query(query: str) -> Optional[str]:
