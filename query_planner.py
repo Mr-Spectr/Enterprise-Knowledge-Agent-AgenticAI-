@@ -23,6 +23,10 @@ async def plan_query(query: str, role: str, ask_ai: ChatFn) -> dict[str, str]:
         planned = json.loads(match.group(0) if match else raw)
         route = planned.get("route")
         if route in {"general", "academic_data", "knowledge"}:
+            # High-confidence institutional terms must never be downgraded by
+            # an LLM planner: they require the controlled retrieval route.
+            if fallback in {"academic_data", "knowledge"} and route == "general":
+                return {"route": fallback, "reason": "Safety override for institutional request", "source": "guardrail"}
             return {"route": route, "reason": str(planned.get("reason", "AI planner")), "source": "groq"}
     except Exception:
         pass

@@ -400,22 +400,6 @@ async def ask(payload: AskRequest):
         identity = resolve_identity(payload.user_id)
         if identity.role == "unknown":
             raise HTTPException(status_code=401, detail="Invalid user ID")
-        document_terms = {"policy", "policies", "document", "documents", "handbook", "notice", "notices", "syllabus", "rag", "mcp"}
-        if document_terms.intersection(set(payload.query.lower().split())):
-            evidence = search_knowledge(payload.query, identity.role)
-            if evidence["result_count"]:
-                citations = "\n".join(
-                    f"- {item['source']}{f', page {item['page']}' if item['page'] else ''}: {item['excerpt']}"
-                    for item in evidence["results"]
-                )
-                return JSONResponse({
-                    "answer": "Here is the approved-source information I found:\n" + citations,
-                    "role": identity.role,
-                    "classification": {"query_type": "knowledge_query", "intent": "search_project_knowledge"},
-                    "sources": evidence["results"],
-                    "trace": [{"agent": "knowledge-agent", "action": "search_project_knowledge", "status": "completed", "detail": "Returned role-filtered, source-attributed document excerpts."}],
-                })
-
         # ── 1. Retrieve conversation history ──────────────────────────────
         history = _chat_history[payload.user_id]
 

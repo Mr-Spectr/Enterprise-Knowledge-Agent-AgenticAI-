@@ -22,8 +22,15 @@ from typing import Any, Awaitable, Callable, Dict, List
 from data_agents import route_data_agent
 from data_retriever import get_user_context
 from intent_agent import run_intent_agent
+from mcp_csv_server import call_tool
 from query_planner import plan_query
 from rbac import detect_role
+from supervisor_agent import (
+    create_plan,
+    verify_academic_evidence,
+    verify_general_response,
+    verify_knowledge_evidence,
+)
 
 
 ClassifierFn = Callable[[str], Awaitable[Dict[str, str]]]
@@ -272,8 +279,14 @@ async def run_agentic_workflow(
     intent = classification.get("intent", "general")
     entity = classification.get("entity", "general")
 
+    supervisor_plan = create_plan(route, intent, role)
+    trace.append(_step(
+        "supervisor-agent", "create_bounded_execution_plan", "completed",
+        "Planned: " + " -> ".join(task.agent for task in supervisor_plan.tasks),
+    ))
+
     # ── General query → Knowledge Agent (direct LLM) ──────────────────────
-    if route == "general" or query_type == "general_query":
+    if route == "general":
         trace.append(_step(
             "knowledge-agent", "answer_general_query", "in_progress",
             "Sending conceptual query to Groq LLM.",
@@ -285,10 +298,30 @@ async def run_agentic_workflow(
         )
         trace[-1]["status"] = "completed"
         trace[-1]["detail"] = "Returned direct LLM answer for general knowledge query."
+        verification = verify_general_response(answer)
+        trace.append(_step("response-verifier-agent", "verify_general_response", "completed" if verification.accepted else "failed", verification.reason))
+        if not verification.accepted:
+            answer = "I could not produce a reliable answer. Please try again."
         return AgentResult(
             answer=answer, role=role, classification=classification,
             user_context=user_context, trace=trace,
         )
+
+    # ── Knowledge query → MCP RAG retrieval + evidence-grounded composer ──
+    if route == "knowledge":
+        evidence = call_tool("search_project_knowledge", {"query": query, "limit": 5}, requester_user_id=user_id)
+        verification = verify_knowledge_evidence(evidence)
+        trace.append(_step("knowledge-retrieval-agent", "retrieve_approved_passages", "completed" if verification.accepted else "failed", verification.reason))
+        if not verification.accepted:
+            trace.append(_step("recovery-agent", "return_transparent_limitation", "completed", "No approved RAG evidence was available."))
+            return AgentResult(answer="I could not find an approved knowledge source for that request.", role=role, classification=classification, user_context=user_context, trace=trace)
+        answer = await ask_groq(
+            "Answer only from the supplied approved knowledge passages. State when the passages do not answer the question.",
+            f"Question: {query}\nEvidence: {_json_dumps(evidence)}",
+            "composer",
+        )
+        trace.append(_step("composer-agent", "compose_grounded_answer", "completed", "Composed answer from verified RAG evidence."))
+        return AgentResult(answer=answer, role=role, classification=classification, user_context=user_context, trace=trace)
 
     # ── Data Router Agent ─────────────────────────────────────────────────
     trace.append(_step(
@@ -311,6 +344,12 @@ async def run_agentic_workflow(
         "completed",
         data_result.detail,
     ))
+
+    verification = verify_academic_evidence(retrieved, user_id, role)
+    trace.append(_step("evidence-verifier-agent", "verify_academic_evidence", "completed" if verification.accepted else "failed", verification.reason))
+    if not verification.accepted:
+        trace.append(_step("recovery-agent", "return_transparent_limitation", "completed", "Rejected unverified academic result."))
+        return AgentResult(answer="I could not verify a reliable, permitted academic record for this request.", role=role, classification=classification, user_context=user_context, trace=trace)
 
     compact_payload = _compact_payload(retrieved)
 
