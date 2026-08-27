@@ -425,15 +425,17 @@ def create_excel(answer: str, records: list[dict] | None = None) -> Path:
             ("course", "Enrolled Courses", "text"), ("cgpa", "Academic Score / 10", "decimal"),
             ("attendance_percent", "Attendance", "percent"), ("backlog_count", "Backlog Status", "text"),
             ("email", "College Email", "text"), ("phone", "Phone", "text"),
-            ("source", "Data Source", "text"), ("data_quality_note", "Data Quality Note", "text"),
+            ("source", "Data Source", "text"), ("cgpa_source", "Academic Score Source", "text"),
+            ("attendance_source", "Attendance Source", "text"), ("mentor_source", "Mentor Source", "text"),
+            ("data_quality_note", "Data Quality Note", "text"),
         ]
-        data_ws.merge_cells("A1:L1")
+        data_ws.merge_cells("A1:O1")
         data_ws["A1"] = "Academic Records - Source-Aware Export"
         data_ws["A1"].font = Font(name="Calibri", bold=True, size=16, color=TITLE_FG)
         data_ws["A1"].fill = PatternFill("solid", fgColor="EEF1FB")
         data_ws["A1"].alignment = Alignment(vertical="center", indent=1)
         data_ws.row_dimensions[1].height = 30
-        data_ws.merge_cells("A2:L2")
+        data_ws.merge_cells("A2:O2")
         data_ws["A2"] = "Blank fields mean the value was not present in the Moodle source. Values are not estimated or invented."
         data_ws["A2"].font = Font(name="Calibri", size=10, color=META_FG, italic=True)
         data_ws["A2"].alignment = Alignment(wrap_text=True, vertical="center", indent=1)
@@ -464,11 +466,11 @@ def create_excel(answer: str, records: list[dict] | None = None) -> Path:
                     cell.value = value / 100
                     cell.number_format = "0.0%"
         end_row = header_row + len(records)
-        table = ExcelTable(displayName="AcademicRecords", ref=f"A{header_row}:L{end_row}")
+        table = ExcelTable(displayName="AcademicRecords", ref=f"A{header_row}:O{end_row}")
         table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
         data_ws.add_table(table)
         data_ws.freeze_panes = "A5"
-        widths = [18, 26, 20, 11, 44, 19, 14, 18, 30, 16, 20, 60]
+        widths = [18, 26, 20, 11, 44, 19, 14, 18, 30, 16, 20, 28, 28, 28, 65]
         for col, width in enumerate(widths, 1):
             data_ws.column_dimensions[get_column_letter(col)].width = width
 

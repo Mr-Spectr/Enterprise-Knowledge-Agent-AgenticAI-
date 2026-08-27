@@ -293,6 +293,9 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
     total_sessions = 80
     present = round(total_sessions * attendance_percent / 100)
     absent = total_sessions - present
+    cgpa_source = str(row.get("cgpa_source") or "Moodle course-grade average").strip()
+    attendance_source = str(row.get("attendance_source") or "Moodle attendance logs").strip()
+    mentor_source = str(row.get("mentor_source") or "Moodle course teacher").strip()
 
     return {
         "id": student_id,
@@ -322,9 +325,12 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "class_teacher": dict(mentor),
         "source": "Moodle SQL import" if EXTERNAL_SQLITE else "Bundled demonstration data",
         "data_quality_note": (
-            "Attendance is calculated from Moodle attendance logs; academic score is a Moodle grade average on a 10-point scale, not an official CGPA."
+            f"Academic score: {cgpa_source}. Attendance: {attendance_source}. Mentor/class teacher: {mentor_source}."
             if EXTERNAL_SQLITE else "Demonstration dataset."
         ),
+        "cgpa_source": cgpa_source,
+        "attendance_source": attendance_source,
+        "mentor_source": mentor_source,
     }
 
 

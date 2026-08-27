@@ -18,6 +18,7 @@ class ExcelExportTest(unittest.TestCase):
             self.assertEqual(sheet.freeze_panes, "A5")
             self.assertIn("AcademicRecords", sheet.tables)
             self.assertEqual(sheet["G5"].number_format, "0.0%")
+            self.assertEqual(sheet.max_column, 15)
         finally:
             path.unlink(missing_ok=True)
 
