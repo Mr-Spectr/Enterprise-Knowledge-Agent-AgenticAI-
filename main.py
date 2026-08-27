@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from groq import Groq
+import requests
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
@@ -117,7 +118,50 @@ class KnowledgeSearchRequest(BaseModel):
     limit: int = Field(default=5, ge=1, le=10)
 
 
-# ── Groq helpers ──────────────────────────────────────────────────────────────
+# ── AI provider helpers ───────────────────────────────────────────────────────
+
+ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+
+def _anthropic_chat(system_prompt: str, history: list[dict], new_user_message: str) -> str:
+    """Call Claude's Messages API without exposing credentials to the client."""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is missing")
+    messages = [
+        {"role": item["role"], "content": item["content"]}
+        for item in history
+        if item.get("role") in {"user", "assistant"} and item.get("content")
+    ]
+    messages.append({"role": "user", "content": new_user_message})
+    try:
+        response = requests.post(
+            ANTHROPIC_MESSAGES_URL,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": ANTHROPIC_MODEL,
+                "max_tokens": 900,
+                "temperature": 0.3,
+                "system": system_prompt,
+                "messages": messages,
+            },
+            timeout=45,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        detail = response.text[:300] if "response" in locals() else str(exc)
+        raise RuntimeError(f"Claude request failed: {detail}") from exc
+    text = "".join(
+        block.get("text", "") for block in response.json().get("content", [])
+        if block.get("type") == "text"
+    ).strip()
+    if not text:
+        raise RuntimeError("Claude returned no text response")
+    return text
 
 def _get_client() -> Groq:
     api_key = os.getenv("GROQ_API_KEY", "")
@@ -132,7 +176,10 @@ def _chat_with_history(
     new_user_message: str,
     model: str,
 ) -> str:
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return _anthropic_chat(system_prompt, history, new_user_message)
     client = _get_client()
+    model = os.getenv("GROQ_MODEL", model)
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": new_user_message})

@@ -46,6 +46,7 @@ def _run(
                 "user_id": user_id,
                 "assignments_path": assignments_path,
             },
+            requester_user_id=user_id,
         ),
     )
 
