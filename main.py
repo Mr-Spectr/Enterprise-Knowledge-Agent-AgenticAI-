@@ -106,10 +106,6 @@ class MentorAssignmentRequest(BaseModel):
 class ClearHistoryRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
 
-class LoginRequest(BaseModel):
-    user_id: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
-
 class McpCallRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
@@ -270,24 +266,6 @@ async def health() -> dict:
         "students": student_count(),
         "knowledge_base": "ready",
     }
-
-
-@app.post("/login")
-async def login(payload: LoginRequest):
-    identity = resolve_identity(payload.user_id)
-    if identity.role == "unknown":
-        raise HTTPException(status_code=401, detail="Invalid user ID")
-    context = get_user_context(
-        user_id=payload.user_id,
-        role=identity.role,
-        assignments_path=str(MENTOR_ASSIGNMENTS_PATH),
-    )
-    return JSONResponse(json.loads(_json_dumps({
-        "message": "Login successful",
-        "role": identity.role,
-        "user_id": identity.user_id or payload.user_id,
-        "user_context": context,
-    })))
 
 
 @app.get("/mcp/tools")

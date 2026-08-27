@@ -537,60 +537,9 @@ a{color:inherit;text-decoration:none}
   flex-shrink:0;
 }
 
-/* Login */
-.login-screen{
-  position:fixed;inset:0;z-index:999;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--bg);
-  padding:20px;
-}
-.login-panel{
-  width:min(390px,100%);
-  background:var(--bg-2);
-  border:1px solid var(--border);
-  border-radius:var(--r-lg);
-  padding:22px;
-  box-shadow:0 18px 60px rgba(0,0,0,.35);
-}
-.login-brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
-.login-title{font-size:18px;font-weight:700;color:var(--text)}
-.login-sub{font-size:12px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em}
-.login-field{margin-bottom:12px}
-.login-field label{display:block;font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
-.login-field input{
-  width:100%;background:var(--bg-3);border:1px solid var(--border);
-  color:var(--text);border-radius:var(--r);padding:10px 11px;font-size:14px;
-}
-.login-field input:focus{border-color:var(--border-2)}
-.login-status{min-height:18px;margin-top:10px;font-size:12px;color:var(--red)}
 </style>
 </head>
 <body>
-
-<!-- ═══════ LOGIN ═══════ -->
-<div class="login-screen" id="loginScreen">
-  <div class="login-panel">
-    <div class="login-brand">
-      <div class="logo">M</div>
-      <div>
-        <div class="login-title">Moodle AI</div>
-        <div class="login-sub">NMIT Smart Campus</div>
-      </div>
-    </div>
-    <div class="login-field">
-      <label>User ID</label>
-      <input id="loginUserId" type="text" placeholder="1NT23IS001 or FAC005" autocomplete="username"/>
-    </div>
-    <div class="login-field">
-      <label>Password</label>
-      <input id="loginPassword" type="password" placeholder="Enter password" autocomplete="current-password"/>
-    </div>
-    <button class="btn-primary" id="loginBtn" style="width:100%;justify-content:center;padding:10px 12px">
-      Login
-    </button>
-    <div class="login-status" id="loginStatus"></div>
-  </div>
-</div>
 
 <!-- ═══════ TOPBAR ═══════ -->
 <div class="topbar">
@@ -837,11 +786,6 @@ let EXAMPLES = PROMPTS.unknown;
    DOM REFS
 ═══════════════════════════════════════ */
 const $ = id => document.getElementById(id);
-const loginScreen  = $('loginScreen');
-const loginUserId  = $('loginUserId');
-const loginPassword= $('loginPassword');
-const loginBtn     = $('loginBtn');
-const loginStatus  = $('loginStatus');
 const userId        = $('userId');
 const roleBadge     = $('roleBadge');
 const loadBtn       = $('loadBtn');
@@ -878,51 +822,6 @@ const welcomeMsg    = $('welcomeMsg');
 let userContext = null;
 let pendingDownload = null;
 let isDark = true;
-
-/* ═══════════════════════════════════════
-   LOGIN
-═══════════════════════════════════════ */
-async function login() {
-  const uid = loginUserId.value.trim();
-  const password = loginPassword.value.trim();
-  if (!uid || !password) {
-    loginStatus.textContent = 'Enter user ID and password.';
-    return;
-  }
-
-  loginStatus.textContent = 'Signing in...';
-  loginBtn.disabled = true;
-  try {
-    const res = await fetch(`${BASE_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: uid, password }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-
-    userId.value = data.user_id || uid;
-    const role = data.role || detectRole(userId.value);
-    roleBadge.textContent = role.charAt(0).toUpperCase() + role.slice(1);
-    roleBadge.className = `role-chip ${role}`;
-    roleBadge.style.display = '';
-    loginScreen.style.display = 'none';
-
-    renderContext(data.user_context);
-  } catch (e) {
-    loginStatus.textContent = e.message || 'Login failed.';
-  } finally {
-    loginBtn.disabled = false;
-  }
-}
-
-loginBtn.addEventListener('click', login);
-loginPassword.addEventListener('keydown', e => {
-  if (e.key === 'Enter') login();
-});
-loginUserId.addEventListener('keydown', e => {
-  if (e.key === 'Enter') loginPassword.focus();
-});
 
 /* ═══════════════════════════════════════
    THEME
