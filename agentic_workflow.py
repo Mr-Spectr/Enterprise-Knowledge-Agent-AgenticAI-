@@ -15,13 +15,14 @@ Agents:
 """
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from typing import Any, Awaitable, Callable, Dict, List
 
 from data_agents import route_data_agent
 from data_retriever import get_user_context
 from intent_agent import run_intent_agent
+from query_planner import plan_query
 from rbac import detect_role
 
 
@@ -55,6 +56,7 @@ class AgentResult:
     classification: Dict[str, str]
     user_context: Dict[str, Any]
     trace: List[Dict[str, str]]
+    records: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def _step(agent: str, action: str, status: str, detail: str) -> Dict[str, str]:
@@ -252,7 +254,15 @@ async def run_agentic_workflow(
         "Loaded role-scoped dashboard context.",
     ))
 
-    # ── Intent Agent ──────────────────────────────────────────────────────
+    # ── AI Query Planner Agent ────────────────────────────────────────────
+    plan = await plan_query(query, role, ask_groq)
+    route = plan["route"]
+    trace.append(_step(
+        "query-planner-agent", "plan_query_route", "completed",
+        f"Selected {route} route using {plan['source']}: {plan['reason']}",
+    ))
+
+    # ── Intent Agent: internal capability resolution, not user-facing routing ─
     classification, intent_detail = await run_intent_agent(query, classify_query, user_id=user_id)
     trace.append(_step(
         "intent-agent", "classify_and_enrich_intent", "completed", intent_detail,
@@ -263,7 +273,7 @@ async def run_agentic_workflow(
     entity = classification.get("entity", "general")
 
     # ── General query → Knowledge Agent (direct LLM) ──────────────────────
-    if query_type == "general_query":
+    if route == "general" or query_type == "general_query":
         trace.append(_step(
             "knowledge-agent", "answer_general_query", "in_progress",
             "Sending conceptual query to Groq LLM.",
@@ -343,5 +353,5 @@ async def run_agentic_workflow(
 
     return AgentResult(
         answer=answer, role=role, classification=classification,
-        user_context=user_context, trace=trace,
+        user_context=user_context, trace=trace, records=retrieved.get("records", []),
     )

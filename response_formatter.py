@@ -323,7 +323,7 @@ def _pdf_fpdf(answer: str) -> Path:
 #  EXCEL
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def create_excel(answer: str) -> Path:
+def create_excel(answer: str, records: list[dict] | None = None) -> Path:
     wb = Workbook()
     ws = wb.active
     ws.title = "Moodle AI Report"
@@ -411,6 +411,36 @@ def create_excel(answer: str) -> Path:
             ws.column_dimensions[get_column_letter(ci)].width = min(max(col_values, default=10) + 4, 40)
     else:
         row = _xl_text(ws, answer, row, HDR_BG, HDR_FG, ALT_BG)
+
+    # ── Structured data sheet ─────────────────────────────────────────────────
+    # Keep real database records in actual columns rather than flattening them
+    # into prose. The summary remains on the first, presentation-ready sheet.
+    if records:
+        data_ws = wb.create_sheet("Data")
+        preferred = ["usn", "student_id", "name", "semester", "department", "course", "cgpa", "attendance_percent", "backlog_count", "email", "phone"]
+        fields = [key for key in preferred if any(key in record for record in records)]
+        fields += sorted({key for record in records for key in record} - set(fields))
+        for col, key in enumerate(fields, 1):
+            cell = data_ws.cell(row=1, column=col, value=key.replace("_", " ").title())
+            cell.font = Font(name="Calibri", bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor=HDR_BG)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = thin_border()
+        for row_index, record in enumerate(records, 2):
+            fill = ALT_BG if row_index % 2 == 0 else "FFFFFF"
+            for col, key in enumerate(fields, 1):
+                value = record.get(key, "")
+                if isinstance(value, (dict, list)):
+                    value = str(value)
+                cell = data_ws.cell(row=row_index, column=col, value=value)
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+                cell.fill = PatternFill("solid", fgColor=fill)
+                cell.border = thin_border()
+        data_ws.auto_filter.ref = data_ws.dimensions
+        data_ws.freeze_panes = "A2"
+        for col in range(1, len(fields) + 1):
+            width = max(len(str(data_ws.cell(row=r, column=col).value or "")) for r in range(1, data_ws.max_row + 1))
+            data_ws.column_dimensions[get_column_letter(col)].width = min(max(width + 2, 12), 42)
 
     # ── Footer ────────────────────────────────────────────────────────────────
     row += 2

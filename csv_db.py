@@ -15,6 +15,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from academic_store import fetch_records
+
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "students.csv"
@@ -306,11 +308,8 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
 
 @lru_cache(maxsize=4)
 def _load_students_cached(path_text: str, mtime: float) -> List[Dict[str, Any]]:
-    path = Path(path_text)
-    if not path.exists():
-        return []
-    with path.open(newline="", encoding="utf-8-sig") as f:
-        return [_clean_row(row) for row in csv.DictReader(f)]
+    # The CSV is an approved seed source; all runtime reads use SQLite.
+    return [_clean_row(row) for row in fetch_records()]
 
 
 def load_students() -> List[Dict[str, Any]]:

@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 data/knowledge.db
+data/academic.sqlite
 *.pyc
 .DS_Store
 .env

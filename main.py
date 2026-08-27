@@ -467,7 +467,7 @@ async def ask(payload: AskRequest):
             )
         if payload.format == "excel":
             return _build_download_response(
-                create_excel(answer),
+                create_excel(answer, result.records),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "moodle_ai_response.xlsx",
             )
