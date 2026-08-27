@@ -13,6 +13,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 CSV_PATH = Path(os.getenv("STUDENT_DB_CSV_PATH", BASE_DIR / "data" / "students.csv"))
 DB_PATH = Path(os.getenv("ACADEMIC_SQLITE_PATH", BASE_DIR / "data" / "academic.sqlite"))
+EXTERNAL_SQLITE = bool(os.getenv("ACADEMIC_SQLITE_PATH"))
 
 
 def _connect() -> sqlite3.Connection:
@@ -23,7 +24,16 @@ def _connect() -> sqlite3.Connection:
 
 
 def ensure_database() -> Path:
-    """Seed/refresh SQLite from the approved demo CSV when the CSV is newer."""
+    """Return an attached SQLite database, or seed the bundled demo database."""
+    # An explicitly configured database is authoritative.  This keeps a
+    # Moodle import from being replaced by the bundled demonstration CSV.
+    if EXTERNAL_SQLITE and DB_PATH.exists():
+        with sqlite3.connect(DB_PATH) as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='student_records'"
+            ).fetchone()
+        if exists:
+            return DB_PATH
     if not CSV_PATH.exists():
         raise FileNotFoundError(f"Academic source not found: {CSV_PATH}")
     if DB_PATH.exists() and DB_PATH.stat().st_mtime >= CSV_PATH.stat().st_mtime:
@@ -57,4 +67,9 @@ def database_status() -> dict[str, object]:
     path = ensure_database()
     with _connect() as conn:
         count = conn.execute("SELECT COUNT(*) FROM student_records").fetchone()[0]
-    return {"engine": "sqlite", "path": str(path), "records": count, "seed": str(CSV_PATH)}
+    return {
+        "engine": "sqlite",
+        "path": str(path),
+        "records": count,
+        "source": "external_sqlite" if EXTERNAL_SQLITE else "bundled_demo_csv",
+    }

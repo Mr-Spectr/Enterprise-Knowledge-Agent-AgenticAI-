@@ -2,6 +2,7 @@
 __pycache__/
 data/knowledge.db
 data/academic.sqlite
+data/moodle.sqlite
 *.pyc
 .DS_Store
 .env

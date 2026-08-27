@@ -1,9 +1,9 @@
 """
 csv_db.py
 
-CSV-only data adapter for the Moodle AI Assistant.
-The app treats students_500.csv as the single source of truth and derives
-mentor, attendance, and backlog fields for every student.
+Normalized academic-data adapter for the Moodle AI Assistant.
+The app reads its records from SQLite, seeded by the bundled CSV or an
+imported Moodle dump, and derives only fields absent from the source.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from academic_store import fetch_records
+from academic_store import DB_PATH, ensure_database, fetch_records
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -133,9 +133,8 @@ def _normalise_name(value: Any) -> str:
 
 
 def _signature() -> tuple[str, float]:
-    if not CSV_PATH.exists():
-        return (str(CSV_PATH), 0)
-    return (str(CSV_PATH), CSV_PATH.stat().st_mtime)
+    path = ensure_database()
+    return (str(path), path.stat().st_mtime)
 
 
 def _derive_attendance(student_id: int, cgpa: float, semester: int) -> float:
@@ -268,7 +267,22 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
     }
     if not mentor["name"]:
         mentor = _mentor_for(student_id, semester)
-    courses = _courses_for(str(row.get("department") or "ISE").strip(), semester)
+    department = str(row.get("department") or "ISE").strip()
+    imported_courses = [item.strip() for item in str(row.get("course") or "").split(";") if item.strip()]
+    courses = (
+        [
+            {
+                "id": f"MOODLE-{index + 1}",
+                "shortname": course_name,
+                "fullname": course_name,
+                "department": department,
+                "semester": semester,
+            }
+            for index, course_name in enumerate(imported_courses)
+        ]
+        if imported_courses
+        else _courses_for(department, semester)
+    )
     attendance_percent = _to_float(row.get("attendance_percent"), -1)
     if attendance_percent < 0:
         attendance_percent = _derive_attendance(student_id, cgpa, semester)
@@ -287,8 +301,8 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "email": str(row.get("email") or row.get("college_email") or "").strip(),
         "phone": str(row.get("phone") or "").strip(),
         "batch": str(row.get("batch") or "").strip(),
-        "department": str(row.get("department") or "").strip(),
-        "course": str(row.get("department") or "ISE").strip(),
+        "department": department,
+        "course": str(row.get("course") or department).strip(),
         "courses": courses,
         "enrolled_courses": courses,
         "course_count": len(courses),
@@ -302,7 +316,7 @@ def _clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "backlog_courses": backlog_courses,
         "mentor": dict(mentor),
         "class_teacher": dict(mentor),
-        "source": "students_500.csv",
+        "source": str(DB_PATH.name),
     }
 
 

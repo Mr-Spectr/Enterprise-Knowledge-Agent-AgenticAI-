@@ -1,7 +1,7 @@
 """
-main.py — Moodle AI Assistant Backend (CSV Edition)
+main.py — Moodle AI Assistant Backend
 ===================================================
-Uses students_500.csv as the only student database.
+Uses a normalized SQLite academic database (demo CSV or imported Moodle data).
 Conversation memory and multi-format export are preserved.
 """
 
@@ -24,8 +24,13 @@ import requests
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
+# Configuration must load before the academic modules are imported: their
+# SQLite adapter selects the Moodle database from ACADEMIC_SQLITE_PATH.
+load_dotenv()
+
 from agentic_workflow import run_agentic_workflow
 from classifier import classify_query
+from academic_store import database_status
 from csv_db import student_count
 from data_retriever import assign_mentor, get_user_context, retrieve_data
 from mcp_csv_server import call_tool, list_tools
@@ -38,8 +43,6 @@ from response_formatter import (
     create_word,
     format_text_response,
 )
-
-load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("moodle-ai-assistant")
@@ -306,10 +309,12 @@ def _build_system_prompt(role: str) -> str:
 
 @app.get("/health")
 async def health() -> dict:
+    store = database_status()
     return {
         "status": "ok",
-        "version": "4.0.0-csv",
-        "database": "students_500.csv",
+        "version": "4.1.0-agentic-sqlite",
+        "database": store["source"],
+        "database_engine": store["engine"],
         "students": student_count(),
         "knowledge_base": "ready",
     }
