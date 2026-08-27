@@ -739,7 +739,10 @@ a{color:inherit;text-decoration:none}
 /* ═══════════════════════════════════════
    CONFIG
 ═══════════════════════════════════════ */
-const BASE_URL = 'http://127.0.0.1:8000';
+// Keep API requests on the exact origin serving this page. This prevents a
+// newer UI opened on one local port from accidentally calling an older server
+// process that happens to still be listening on port 8000.
+const BASE_URL = window.location.origin;
 
 const PROMPTS = {
   student: [
